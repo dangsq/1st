@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Three.js - 贝塞尔曲面旋转体 | 参数化3D模型</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', 'Segoe UI', 'Roboto', sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 18px;
+            border-radius: 8px;
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            z-index: 10;
+            font-size: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            border-left: 4px solid #ff8c00;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(30,30,40,0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 15px 20px;
+            color: white;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 12px;
+            z-index: 20;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            pointer-events: auto;
+            font-family: monospace;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(0,0,0,0.5);
+            padding: 8px 14px;
+            border-radius: 12px;
+            min-width: 110px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .control-group label {
+            font-size: 12px;
+            letter-spacing: 1px;
+            color: #ffaa66;
+        }
+        input {
+            cursor: pointer;
+            background: #2c2c3a;
+            border: none;
+            height: 4px;
+            border-radius: 5px;
+            accent-color: #ff8c00;
+        }
+        .value-display {
+            font-size: 11px;
+            color: #ddd;
+            text-align: right;
+            margin-top: 2px;
+        }
+        @media (max-width: 800px) {
+            .control-group { min-width: 80px; padding: 5px 8px; }
+            #controls { padding: 12px; gap: 8px; }
+        }
+        button {
+            background: #ff8c00;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 24px;
+            color: #1e1e2a;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 12px;
+        }
+        button:hover {
+            background: #ffaa33;
+            transform: scale(1.02);
+        }
+        .note {
+            font-size: 10px;
+            color: #ccc;
+            margin-left: 10px;
+            align-self: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>✨ 贝塞尔曲线旋转体</strong> | 基于参数化轮廓 | 动态更新
+    </div>
+    <div id="controls">
+        <div class="control-group">
+            <label>📏 Height (高度)</label>
+            <input type="range" id="height" min="0.6" max="2.0" step="0.01" value="1.0">
+            <div class="value-display" id="heightVal">1.00</div>
+        </div>
+        <div class="control-group">
+            <label>📐 Width (宽度)</label>
+            <input type="range" id="width" min="0.5" max="1.8" step="0.01" value="1.0">
+            <div class="value-display" id="widthVal">1.00</div>
+        </div>
+        <div class="control-group">
+            <label>🔘 Bottom Radius</label>
+            <input type="range" id="bottom_z_r" min="0.1" max="0.8" step="0.01" value="0.3">
+            <div class="value-display" id="bottom_z_rVal">0.30</div>
+        </div>
+        <div class="control-group">
+            <label>📉 Bottom Depth</label>
+            <input type="range" id="bottom_depth" min="0.05" max="0.35" step="0.01" value="0.1">
+            <div class="value-display" id="bottom_depthVal">0.10</div>
+        </div>
+        <div class="control-group">
+            <label>⛰️ Max Width Height</label>
+            <input type="range" id="max_with_height" min="0.3" max="1.2" step="0.01" value="0.55">
+            <div class="value-display" id="max_with_heightVal">0.55</div>
+        </div>
+        <div class="control-group">
+            <label>🔘 Top Radius</label>
+            <input type="range" id="top_z_r" min="0.1" max="0.8" step="0.01" value="0.3">
+            <div class="value-display" id="top_z_rVal">0.30</div>
+        </div>
+        <div class="control-group">
+            <label>📈 Top Depth</label>
+            <input type="range" id="top_depth" min="0.05" max="0.35" step="0.01" value="0.1">
+            <div class="value-display" id="top_depthVal">0.10</div>
+        </div>
+        <div class="control-group">
+            <label>🌀 Cubic Ratio</label>
+            <input type="range" id="cubic_ratio" min="0.1" max="0.8" step="0.01" value="0.3">
+            <div class="value-display" id="cubic_ratioVal">0.30</div>
+        </div>
+        <div class="control-group">
+            <label>🎨 网格密度</label>
+            <input type="range" id="segments" min="32" max="128" step="8" value="64">
+            <div class="value-display" id="segmentsVal">64</div>
+        </div>
+        <button id="resetBtn">重置默认</button>
+        <div class="note">⚡ 滑块实时更新曲面 | 鼠标拖拽旋转视角</div>
+    </div>
+
+    <!-- 引入Three.js核心库及扩展 -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // --- 初始化场景 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050b1a);
+        scene.fog = new THREE.FogExp2(0x050b1a, 0.008);
+
+        // --- 相机 (透视相机) ---
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(2.2, 1.5, 2.8);
+        camera.lookAt(0, 0, 0);
+
+        // --- 渲染器 ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true; // 开启阴影映射增强质感
+        document.body.appendChild(renderer.domElement);
+
+        // --- 轨道控制 ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = false;
+        controls.enableZoom = true;
+        controls.zoomSpeed = 1.2;
+        controls.rotateSpeed = 1.0;
+        controls.target.set(0, 0, 0);
+
+        // --- 辅助元素：网格地板和光线 (提升视觉) ---
+        const gridHelper = new THREE.GridHelper(5, 20, 0x88aaff, 0x335588);
+        gridHelper.position.y = -1.2;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.35;
+        scene.add(gridHelper);
+        
+        // 简易环境光 + 点光源 + 背光补光
+        const ambientLight = new THREE.AmbientLight(0x404060);
+        scene.add(ambientLight);
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1);
+        mainLight.position.set(2, 3, 1.5);
+        mainLight.castShadow = true;
+        mainLight.receiveShadow = false;
+        scene.add(mainLight);
+        const fillLight = new THREE.PointLight(0x4466cc, 0.4);
+        fillLight.position.set(-1, 1, 2);
+        scene.add(fillLight);
+        const backLight = new THREE.PointLight(0xffaa66, 0.3);
+        backLight.position.set(0.5, 1.2, -1.8);
+        scene.add(backLight);
+        const rimLight = new THREE.PointLight(0xff8866, 0.5);
+        rimLight.position.set(1.2, 1.5, 1.8);
+        scene.add(rimLight);
+        
+        // 辅助轴线 (可选，轻量化)
+        // const axesHelper = new THREE.AxesHelper(1.5);
+        // scene.add(axesHelper);
+        
+        // --- 全局变量 ---
+        let currentMesh = null;          // 当前曲面网格
+        let profileEvaluator = null;     // 曲线求值函数 (v -> {r, z})
+        
+        // --- 参数绑定 DOM 元素 ---
+        const params = {
+            height: 1.0,
+            width: 1.0,
+            bottom_z_r: 0.3,
+            bottom_depth: 0.1,
+            max_with_height: 0.55,
+            top_z_r: 0.3,
+            top_depth: 0.1,
+            cubic_ratio: 0.3,
+            segments: 64
+        };
+        
+        // 获取DOM元素并绑定事件
+        const sliders = {
+            height: document.getElementById('height'),
+            width: document.getElementById('width'),
+            bottom_z_r: document.getElementById('bottom_z_r'),
+            bottom_depth: document.getElementById('bottom_depth'),
+            max_with_height: document.getElementById('max_with_height'),
+            top_z_r: document.getElementById('top_z_r'),
+            top_depth: document.getElementById('top_depth'),
+            cubic_ratio: document.getElementById('cubic_ratio'),
+            segments: document.getElementById('segments')
+        };
+        
+        // 显示数值span
+        const displays = {
+            height: document.getElementById('heightVal'),
+            width: document.getElementById('widthVal'),
+            bottom_z_r: document.getElementById('bottom_z_rVal'),
+            bottom_depth: document.getElementById('bottom_depthVal'),
+            max_with_height: document.getElementById('max_with_heightVal'),
+            top_z_r: document.getElementById('top_z_rVal'),
+            top_depth: document.getElementById('top_depthVal'),
+            cubic_ratio: document.getElementById('cubic_ratioVal'),
+            segments: document.getElementById('segmentsVal')
+        };
+        
+        // 更新参数并刷新模型
+        function updateParam(key, val) {
+            params[key] = parseFloat(val);
+            if (displays[key]) displays[key].innerText = val;
+            rebuildSurface();
+        }
+        
+        for (const [key, slider] of Object.entries(sliders)) {
+            slider.addEventListener('input', (e) => {
+                updateParam(key, e.target.value);
+            });
+            // 初始化显示
+            displays[key].innerText = slider.value;
+            params[key] = parseFloat(slider.value);
+        }
+        
+        // 重置默认
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            sliders.height.value = '1.0';
+            sliders.width.value = '1.0';
+            sliders.bottom_z_r.value = '0.3';
+            sliders.bottom_depth.value = '0.1';
+            sliders.max_with_height.value = '0.55';
+            sliders.top_z_r.value = '0.3';
+            sliders.top_depth.value = '0.1';
+            sliders.cubic_ratio.value = '0.3';
+            sliders.segments.value = '64';
+            for (const [key, slider] of Object.entries(sliders)) {
+                updateParam(key, slider.value);
+            }
+        });
+        
+        // --- 核心几何计算: 移植自Python的贝塞尔曲线逻辑 ---
+        // 直线交点计算 (基于点和法向量)
+        function computeIntersect(x1, y1, x2, y2, nx1, ny1, nx2, ny2) {
+            const a1 = nx1, b1 = ny1;
+            const c1 = nx1 * x1 + ny1 * y1;
+            const a2 = nx2, b2 = ny2;
+            const c2 = nx2 * x2 + ny2 * y2;
+            const denom = a1 * b2 - a2 * b1;
+            if (Math.abs(denom) < 1e-10) return null;
+            const ix = (c1 * b2 - c2 * b1) / denom;
+            const iy = (a1 * c2 - a2 * c1) / denom;
+            return [ix, iy];
+        }
+        
+        // 计算贝塞尔控制点 (mode: 'z' 或 'r')，points: [[v, val], ...]
+        function calculateBezierControlPoints(points, mode, cubicRatio) {
+            // 定义法向量 (根据模式移植自python)
+            let nxs, nys;
+            if (mode === 'z') {
+                nxs = [-0.9, 0.0, 0.9, 0.0, -0.9];
+                nys = [0.1, 0.1, 0, 0.1, 0.1];
+            } else { // mode 'r'
+                // 根据点间差值动态计算部分系数 (原python中复杂，移植精确)
+                const deltaV1 = points[2][0] - points[0][0];
+                const deltaZ1 = points[2][1] - points[0][1];
+                const deltaV2 = points[4][0] - points[2][0];
+                const deltaZ2 = points[4][1] - points[2][1];
+                const n1 = 1 / (deltaZ1 !== 0 ? deltaZ1 : 0.01);
+                const n2 = 1 / (deltaZ2 !== 0 ? deltaZ2 : 0.01);
+                const nv1 = -1 / (deltaV1 !== 0 ? deltaV1 : 0.01);
+                const nv2 = -1 / (deltaV2 !== 0 ? deltaV2 : 0.01);
+                nxs = [-0.9, nv1, 0.0, nv2, -0.9];
+                nys = [0.1, n1, 1.0, n2, 0.1];
+            }
+            
+            const controlPairs = [];
+            // 四个分段: 0-1, 1-2, 2-3, 3-4
+            for (let seg = 0; seg < points.length - 1; seg++) {
+                const p0 = points[seg];
+                const p1 = points[seg+1];
+                const nx0 = nxs[seg];
+                const ny0 = nys[seg];
+                const nx1 = nxs[seg+1];
+                const ny1 = nys[seg+1];
+                const intersect = computeIntersect(p0[0], p0[1], p1[0], p1[1], nx0, ny0, nx1, ny1);
+                if (!intersect) {
+                    // 降级: 使用线性插值点作为控制点
+                    const cp1 = [(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5];
+                    const cp2 = [...cp1];
+                    controlPairs.push([cp1, cp2]);
+                } else {
+                    const ix = intersect[0], iy = intersect[1];
+                    const cp1 = [(ix - p0[0]) * cubicRatio + p0[0], (iy - p0[1]) * cubicRatio + p0[1]];
+                    const cp2 = [(ix - p1[0]) * cubicRatio + p1[0], (iy - p1[1]) * cubicRatio + p1[1]];
+                    controlPairs.push([cp1, cp2]);
+                }
+            }
+            return controlPairs;
+        }
+        
+        // 三次贝塞尔求值
+        function cubicBezier(p0, p1, p2, p3, t) {
+            const mt = 1 - t;
+            return mt*mt*mt * p0 + 3*mt*mt*t * p1 + 3*mt*t*t * p2 + t*t*t * p3;
+        }
+        
+        // 构建贝塞尔曲线分段求值器 (给定points和controlPairs, 返回函数 f(v) -> value)
+        function buildBezierEvaluator(points, controlPairs) {
+            const segments = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i];
+                const p3 = points[i+1];
+                const cp1 = controlPairs[i][0];
+                const cp2 = controlPairs[i][1];
+                const vStart = p0[0];
+                const vEnd = p3[0];
+                segments.push({
+                    vStart, vEnd,
+                    p0v: p0[0], p0val: p0[1],
+                    p1v: cp1[0], p1val: cp1[1],
+                    p2v: cp2[0], p2val: cp2[1],
+                    p3v: p3[0], p3val: p3[1]
+                });
+            }
+            
+            return function(v) {
+                // 边界裁剪
+                if (v <= segments[0].vStart) return segments[0].p0val;
+                if (v >= segments[segments.length-1].vEnd) return segments[segments.length-1].p3val;
+                // 找到所在分段
+                let seg = null;
+                for (let s of segments) {
+                    if (v >= s.vStart - 1e-8 && v <= s.vEnd + 1e-8) {
+                        seg = s;
+                        break;
+                    }
+                }
+                if (!seg) {
+                    // 容错: 二分查找
+                    for (let s of segments) {
+                        if (v >= s.vStart && v <= s.vEnd) { seg = s; break; }
+                    }
+                    if (!seg) return segments[0].p0val;
+                }
+                const t = (v - seg.vStart) / (seg.vEnd - seg.vStart);
+                const val = cubicBezier(seg.p0val, seg.p1val, seg.p2val, seg.p3val, t);
+                return val;
+            };
+        }
+        
+        // 根据当前参数构建轮廓曲线 evaluator: 输入纬度角 v (范围 -PI/2 到 PI/2)，输出 { r, z }
+        function buildProfileEvaluator(params) {
+            const { height, width, bottom_z_r, bottom_depth, max_with_height, top_z_r, top_depth, cubic_ratio } = params;
+            
+            // 计算辅助高度坐标 (与python完全一致)
+            const bottum_z = -height / 2;
+            const top_z = height;
+            const maxHeightPos = max_with_height;  // 绝对高度
+            const halfWidth = width / 2;
+            
+            // 定义五个关键点: [v (弧度角度), z值, r值]
+            // p1: 顶部收尖点 v=PI/2, z=top_z - top_depth + bottum_z? 注意原代码 p5 是顶端收口, p1底端收口
+            // 根据python: p1 = [-pi/2, bottum_z+bottom_depth, 0]; p2 = [arctan(-height/2/bottom_z_r), bottum_z, bottom_z_r]
+            // p3 = [arctan((max_with_height-height/2)/(width/2)), max_with_height-height/2, width/2]
+            // p4 = [arctan((top_z-height/2)/(width/2)), top_z+bottum_z, top_z_r] 注意原p4的Z坐标奇怪: top_z+bottum_z? 但bottum_z为负，实际原代码 top_z+bottum_z = height - height/2 = height/2。但调整更平滑，保持原始逻辑: top_z+bottum_z = height - height/2 = height/2
+            // p5 = [pi/2, top_z-top_depth+bottum_z, 0]
+            
+            const v1 = -Math.PI / 2;
+            const z1 = bottum_z + bottom_depth;
+            const r1 = 0;
+            
+            const v2 = Math.atan2(-height/2, bottom_z_r); // arctan(-h/2 / r_bottom)
+            const z2 = bottum_z;
+            const r2 = bottom_z_r;
+            
+            const v3 = Math.atan2(max_with_height - height/2, halfWidth);
+            const z3 = max_with_height - height/2;
+            const r3 = halfWidth;
+            
+            const v4 = Math.atan2(top_z - height/2, halfWidth);
+            const z4 = top_z + bottum_z;  // = height - height/2 = height/2
+            const r4 = top_z_r;
+            
+            const v5 = Math.PI / 2;
+            const z5 = top_z - top_depth + bottum_z;
+            const r5 = 0;
+            
+            const pointsZ = [[v1, z1], [v2, z2], [v3, z3], [v4, z4], [v5, z5]];
+            const pointsR = [[v1, r1], [v2, r2], [v3, r3], [v4, r4], [v5, r5]];
+            
+            // 计算控制点
+            const controlZ = calculateBezierControlPoints(pointsZ, 'z', cubic_ratio);
+            const controlR = calculateBezierControlPoints(pointsR, 'r', cubic_ratio);
+            
+            const evalZ = buildBezierEvaluator(pointsZ, controlZ);
+            const evalR = buildBezierEvaluator(pointsR, controlR);
+            
+            // 返回统一求值函数
+            return (v) => {
+                // 限制v范围 [-pi/2, pi/2]
+                let clampedV = Math.min(Math.max(v, -Math.PI/2), Math.PI/2);
+                const z = evalZ(clampedV);
+                const r = Math.max(0, evalR(clampedV)); // 半径不能为负
+                return { r, z };
+            };
+        }
+        
+        // --- 根据轮廓函数和细分参数生成旋转体BufferGeometry ---
+        function generateLatheGeometry(profileFunc, radialSegments, heightSegments) {
+            // radialSegments: 圆周分段数, heightSegments: 纬度方向分段数 (v角度采样)
+            const vAngles = [];
+            const step = Math.PI / heightSegments; // 从 -PI/2 到 PI/2
+            for (let i = 0; i <= heightSegments; i++) {
+                const v = -Math.PI/2 + i * step;
+                vAngles.push(v);
+            }
+            
+            // 预先计算每个纬度圈的半径和高度
+            const profiles = vAngles.map(v => profileFunc(v));
+            
+            const vertices = [];
+            const indices = [];
+            const normals = [];
+            
+            // 生成顶点
+            for (let i = 0; i <= heightSegments; i++) {
+                const { r, z } = profiles[i];
+                for (let j = 0; j <= radialSegments; j++) {
+                    const theta = (j / radialSegments) * Math.PI * 2;
+                    const x = r * Math.cos(theta);
+                    const y = z;
+                    const zz = r * Math.sin(theta);
+                    vertices.push(x, y, zz);
+                    // 简易法线 (近似径向法线，稍后自动生成或直接使用computeVertexNormals)
+                }
+            }
+            
+            // 构建索引 (两个三角形形成一个矩形网格)
+            for (let i = 0; i < heightSegments; i++) {
+                for (let j = 0; j < radialSegments; j++) {
+                    const a = i * (radialSegments + 1) + j;
+                    const b = i * (radialSegments + 1) + j + 1;
+                    const c = (i + 1) * (radialSegments + 1) + j;
+                    const d = (i + 1) * (radialSegments + 1) + j + 1;
+                    
+                    indices.push(a, b, c);
+                    indices.push(b, d, c);
+                }
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            geometry.setIndex(indices);
+            // 自动计算法线 (获得光照效果)
+            geometry.computeVertexNormals();
+            
+            // 添加UV坐标便于贴图(可选)
+            const uvs = [];
+            for (let i = 0; i <= heightSegments; i++) {
+                for (let j = 0; j <= radialSegments; j++) {
+                    uvs.push(j / radialSegments, i / heightSegments);
+                }
+            }
+            geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+            
+            return geometry;
+        }
+        
+        // --- 重建整个曲面 ---
+        function rebuildSurface() {
+            // 获取最新分段数
+            const radial = Math.max(24, Math.floor(params.segments));
+            const vertical = Math.max(24, Math.floor(params.segments * 0.8)); // 保持比例
+            // 构建轮廓求值器
+            profileEvaluator = buildProfileEvaluator(params);
+            // 生成几何体
+            const geometry = generateLatheGeometry(profileEvaluator, radial, vertical);
+            // 材质: 半透明且带高光的材质，突出曲面美感
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x3a86ff,
+                emissive: 0x001133,
+                roughness: 0.28,
+                metalness: 0.65,
+                flatShading: false,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.92
+            });
+            
+            const newMesh = new THREE.Mesh(geometry, material);
+            newMesh.castShadow = true;
+            newMesh.receiveShadow = false;
+            
+            // 替换场景中的模型
+            if (currentMesh) {
+                scene.remove(currentMesh);
+                // 简单dispose几何体和材质避免内存泄漏
+                if (currentMesh.geometry) currentMesh.geometry.dispose();
+            }
+            scene.add(newMesh);
+            currentMesh = newMesh;
+            
+            // 添加边缘轮廓线框增强视觉效果(可选: 添加一个EdgesGeometry辅助)
+            if (window._wireframeHelper) {
+                scene.remove(window._wireframeHelper);
+                if (window._wireframeHelper.geometry) window._wireframeHelper.geometry.dispose();
+            }
+            const edgesGeo = new THREE.EdgesGeometry(geometry);
+            const edgesMat = new THREE.LineBasicMaterial({ color: 0x88bbff, linewidth: 1 });
+            const wireframe = new THREE.LineSegments(edgesGeo, edgesMat);
+            newMesh.add(wireframe);
+            window._wireframeHelper = wireframe;
+        }
+        
+        // 初始生成曲面
+        rebuildSurface();
+        
+        // 简单增加星光粒子背景 (装饰)
+        const starGeometry = new THREE.BufferGeometry();
+        const starCount = 1200;
+        const starPos = [];
+        for (let i = 0; i < starCount; i++) {
+            starPos.push((Math.random() - 0.5) * 200);
+            starPos.push((Math.random() - 0.5) * 100);
+            starPos.push((Math.random() - 0.5) * 80 - 40);
+        }
+        starGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(starPos), 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.08, transparent: true, opacity: 0.6 });
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+        
+        // 简单动画让星星缓慢自转
+        function animateStars() {
+            stars.rotation.y += 0.0005;
+            stars.rotation.x += 0.0003;
+            requestAnimationFrame(animateStars);
+        }
+        animateStars();
+        
+        // --- 渲染循环 ---
+        function animate() {
+            controls.update(); // 更新轨道
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+        animate();
+        
+        // 窗口自适应
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // 控制台输出提示
+        console.log('3D曲面已启动 | 贝塞尔旋转体 | 动态参数');
+    </script>
+</body>
+</html>

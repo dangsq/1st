@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Three.js 交互式苹果生成器 - 2D轮廓控制3D旋转体</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', Roboto, sans-serif;
+        }
+        
+        /* 整体布局：左侧控制面板，右侧3D视图 */
+        .container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* 左侧2D轮廓编辑区 */
+        .sidebar {
+            width: 320px;
+            background: rgba(30, 30, 40, 0.85);
+            backdrop-filter: blur(8px);
+            border-right: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            flex-direction: column;
+            color: #eee;
+            z-index: 10;
+            box-shadow: 2px 0 20px rgba(0,0,0,0.3);
+            font-size: 14px;
+        }
+        
+        .sidebar-header {
+            padding: 16px 20px;
+            background: rgba(0,0,0,0.4);
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+        }
+        
+        .sidebar-header h2 {
+            margin: 0 0 4px;
+            font-size: 1.4rem;
+            letter-spacing: 1px;
+        }
+        
+        .sidebar-header p {
+            margin: 0;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+        
+        .canvas-container {
+            flex: 1;
+            padding: 20px;
+            position: relative;
+            min-height: 0;
+        }
+        
+        #profileCanvas {
+            width: 100%;
+            background: #1e1e2a;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: block;
+            cursor: crosshair;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .info-panel {
+            padding: 12px 20px;
+            background: rgba(0,0,0,0.4);
+            border-top: 1px solid rgba(255,255,255,0.1);
+            font-size: 12px;
+        }
+        
+        .info-panel p {
+            margin: 6px 0;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        
+        button {
+            background: #4a6fa5;
+            border: none;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+        }
+        
+        button:hover {
+            background: #6b8cbe;
+            transform: scale(1.02);
+        }
+        
+        .coord-status {
+            font-family: monospace;
+            font-size: 11px;
+            color: #ccc;
+        }
+        
+        /* 右侧3D视图占满剩余空间 */
+        #canvas3d {
+            flex: 1;
+            display: block;
+            outline: none;
+        }
+        
+        /* 小提示浮层 */
+        .tooltip {
+            position: absolute;
+            bottom: 15px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            color: #ffd966;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            pointer-events: none;
+            font-family: monospace;
+            z-index: 20;
+        }
+        
+        @media (max-width: 700px) {
+            .sidebar { width: 280px; }
+            .sidebar-header h2 { font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 左侧2D轮廓控制区 -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>🍎 苹果轮廓编辑器</h2>
+            <p>拖动左侧圆点调整剖面曲线 | 右侧实时生成3D苹果</p>
+        </div>
+        <div class="canvas-container">
+            <canvas id="profileCanvas" width="500" height="500" style="width:100%; height:auto; max-width:500px; aspect-ratio:1/1"></canvas>
+            <div class="coord-status" id="coordStatus" style="margin-top: 8px; text-align: center;">
+                当前选中: 无 | 拖拽控制点修改形状
+            </div>
+        </div>
+        <div class="info-panel">
+            <p>🔘 <strong>控制点说明</strong> (Y轴向上, X为半径)</p>
+            <p>▪ 底部中心 → 果洼 ▪ 最大半径处 → 苹果肚 ▪ 顶部凹陷 → 果窝</p>
+            <p>✨ 曲线自动平滑 (CatmullRom) | 旋转体实时更新</p>
+            <div class="control-buttons">
+                <button id="resetBtn">重置苹果形状</button>
+                <button id="toggleGridBtn">切换辅助网格</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧Three.js 3D视图 -->
+    <div id="canvas3d"></div>
+</div>
+<div class="tooltip">
+    🖱️ 鼠标拖拽旋转视角 | 右键平移 | 滚动缩放
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+    // ---------- 初始化右侧3D场景 ----------
+    const container3d = document.getElementById('canvas3d');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a1030);
+    scene.fog = new THREE.FogExp2(0x0a1030, 0.008);
+    
+    // 相机: 透视，合适角度观看苹果
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
+    camera.position.set(3, 2, 4);
+    camera.lookAt(0, 0.5, 0);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container3d.clientWidth, container3d.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container3d.appendChild(renderer.domElement);
+    
+    // 轨道控制
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.rotateSpeed = 1.2;
+    controls.zoomSpeed = 1.2;
+    controls.panSpeed = 0.8;
+    controls.target.set(0, 0.6, 0);
+    
+    // ---------- 灯光系统 (营造苹果质感) ----------
+    // 环境光
+    const ambientLight = new THREE.AmbientLight(0x404060, 0.6);
+    scene.add(ambientLight);
+    // 主光方向光
+    const dirLight = new THREE.DirectionalLight(0xfff0e0, 1.2);
+    dirLight.position.set(4, 5, 3);
+    dirLight.castShadow = true;
+    dirLight.receiveShadow = false;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
+    scene.add(dirLight);
+    // 背光暖色
+    const backLight = new THREE.PointLight(0xffaa66, 0.55);
+    backLight.position.set(-2, 1.5, -2);
+    scene.add(backLight);
+    // 冷色补光
+    const fillLight = new THREE.PointLight(0x88aaff, 0.4);
+    fillLight.position.set(1.5, -0.5, 2);
+    scene.add(fillLight);
+    // 顶光
+    const topLight = new THREE.PointLight(0xffcc99, 0.4);
+    topLight.position.set(0, 2.2, 0.8);
+    scene.add(topLight);
+    
+    // 辅助: 地面网格 (半透明)
+    const gridHelper = new THREE.GridHelper(6, 20, 0x88aaff, 0x446688);
+    gridHelper.position.y = -1.1;
+    gridHelper.material.transparent = true;
+    gridHelper.material.opacity = 0.25;
+    scene.add(gridHelper);
+    
+    // 简单轴线辅助(可选)
+    const axesHelper = new THREE.AxesHelper(1.8);
+    axesHelper.material.transparent = true;
+    axesHelper.material.opacity = 0.12;
+    scene.add(axesHelper);
+    
+    // 星星背景粒子 (装饰)
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 600;
+    const starPos = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+        starPos[i*3] = (Math.random() - 0.5) * 200;
+        starPos[i*3+1] = (Math.random() - 0.5) * 80;
+        starPos[i*3+2] = (Math.random() - 0.5) * 100 - 50;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.05, transparent: true, opacity: 0.5 });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+    
+    // 苹果相关变量
+    let currentAppleMesh = null;       // 当前苹果物体
+    let currentStem = null;            // 果梗
+    let currentLeaf = null;             // 叶子
+    let currentLeafSmall = null;
+    
+    // ---------- 轮廓控制点定义 (归一化坐标: x为半径, y为高度, 范围 y:-1~1.2 适当调整) ----------
+    // 为了方便交互，我们将实际高度范围映射到 [-1.0, 1.2], 半径范围 [0, 1.0]
+    // 预定义苹果特征点: [半径, 高度]  (半径>0, 高度严格递增)
+    let controlPoints = [
+        { x: 0.00, y: -0.95 },  // 底部中心
+        { x: 0.32, y: -0.80 },  // 底脐隆起
+        { x: 0.72, y: -0.35 },  // 下腹
+        { x: 0.88, y: 0.00 },   // 最大半径 (赤道)
+        { x: 0.85, y: 0.40 },   // 肩部
+        { x: 0.70, y: 0.70 },   // 果窝过渡
+        { x: 0.42, y: 0.88 },   // 凹陷区
+        { x: 0.00, y: 1.05 }    // 顶部中心
+    ];
+    
+    // 拖拽交互相关变量
+    let canvas = document.getElementById('profileCanvas');
+    let ctx = canvas.getContext('2d');
+    let draggingIndex = -1;
+    let canvasRect = canvas.getBoundingClientRect();
+    // 绘制参数
+    let width = 500, height = 500;
+    canvas.width = width;
+    canvas.height = height;
+    
+    // 坐标映射: 世界坐标 (半径x, 高度y) -> canvas像素 (u,v)
+    // 世界X范围 0~1.0, 世界Y范围 -1.0 ~ 1.2
+    const worldXMin = 0, worldXMax = 1.05;
+    const worldYMin = -1.05, worldYMax = 1.25;
+    
+    function worldToCanvas(x, y) {
+        const px = ((x - worldXMin) / (worldXMax - worldXMin)) * width;
+        const py = height - ((y - worldYMin) / (worldYMax - worldYMin)) * height;
+        return { x: px, y: py };
+    }
+    
+    function canvasToWorld(px, py) {
+        let x = (px / width) * (worldXMax - worldXMin) + worldXMin;
+        let y = ((height - py) / height) * (worldYMax - worldYMin) + worldYMin;
+        x = Math.min(Math.max(x, 0), worldXMax);
+        y = Math.min(Math.max(y, worldYMin), worldYMax);
+        return { x, y };
+    }
+    
+    // 确保控制点Y值严格递增 (修复拖拽后顺序)
+    function enforceIncreasingY(points) {
+        points.sort((a,b) => a.y - b.y);
+        for (let i = 1; i < points.length; i++) {
+            if (points[i].y <= points[i-1].y) {
+                points[i].y = points[i-1].y + 0.008;
+            }
+        }
+        // 首尾端点约束半径接近0
+        points[0].x = Math.max(0, Math.min(points[0].x, 0.02));
+        points[points.length-1].x = Math.max(0, Math.min(points[points.length-1].x, 0.02));
+        // 防止半径过负
+        for (let p of points) p.x = Math.max(0, p.x);
+    }
+    
+    // 通过控制点生成平滑曲线轮廓 (使用CatmullRomCurve3 获取密集点，用于LatheGeometry)
+    // 返回 Vector2 数组 (x:半径, y:高度)
+    function generateSmoothProfile(resolution = 48) {
+        // 将控制点转为 THREE.Vector3 (x=半径, y=高度, z=0)
+        const vecPoints = controlPoints.map(p => new THREE.Vector3(p.x, p.y, 0));
+        if (vecPoints.length < 2) return [];
+        const curve = new THREE.CatmullRomCurve3(vecPoints);
+        curve.curveType = 'centripetal';
+        curve.closed = false;
+        // 采样
+        const samples = curve.getPoints(resolution);
+        // 确保采样点严格递增Y，且半径非负，并剔除可能的Y重复
+        let smoothed = [];
+        for (let i = 0; i < samples.length; i++) {
+            let x = samples[i].x;
+            let y = samples[i].y;
+            x = Math.max(0, Math.min(x, 1.1));
+            if (smoothed.length === 0 || y > smoothed[smoothed.length-1].y) {
+                smoothed.push(new THREE.Vector2(x, y));
+            } else if (Math.abs(y - smoothed[smoothed.length-1].y) > 0.0001 && y > smoothed[smoothed.length-1].y) {
+                smoothed.push(new THREE.Vector2(x, y));
+            }
+        }
+        // 确保首尾端点精确
+        if (smoothed.length > 0) {
+            smoothed[0].y = controlPoints[0].y;
+            smoothed[0].x = Math.max(0, controlPoints[0].x);
+            smoothed[smoothed.length-1].y = controlPoints[controlPoints.length-1].y;
+            smoothed[smoothed.length-1].x = Math.max(0, controlPoints[controlPoints.length-1].x);
+        }
+        return smoothed;
+    }
+    
+    // 更新3D苹果模型 (基于当前轮廓曲线)
+    function updateApple3D() {
+        const profilePoints = generateSmoothProfile(56);
+        if (profilePoints.length < 3) return;
+        
+        // 创建 LatheGeometry: 绕Y轴旋转
+        // 注意: LatheGeometry 接收 Vector2 数组，每个点 x为半径，y为高度
+        const segments = 48;  // 圆周细分
+        const geometry = new THREE.LatheGeometry(profilePoints, segments);
+        
+        // 材质: 红色苹果质感
+        const material = new THREE.MeshStandardMaterial({
+            color: 0xdd3b3b,
+            emissive: 0x2a0a0a,
+            roughness: 0.28,
+            metalness: 0.08,
+            flatShading: false
+        });
+        
+        const newApple = new THREE.Mesh(geometry, material);
+        newApple.castShadow = true;
+        newApple.receiveShadow = true;
+        newApple.position.y = 0;
+        
+        // 替换场景中的苹果
+        if (currentAppleMesh) scene.remove(currentAppleMesh);
+        currentAppleMesh = newApple;
+        scene.add(currentAppleMesh);
+        
+        // 同时重新生成果梗和叶子 (位置依赖于苹果顶部轮廓实际高度)
+        // 获取顶部最高点 y值 (最后一个轮廓点的高度)
+        const topY = profilePoints[profilePoints.length-1].y;
+        const stemBaseY = topY - 0.03;
+        // 移除旧的梗叶
+        if (currentStem) scene.remove(currentStem);
+        if (currentLeaf) scene.remove(currentLeaf);
+        if (currentLeafSmall) scene.remove(currentLeafSmall);
+        
+        // 果梗: 圆柱略带锥度
+        const stemGeo = new THREE.CylinderGeometry(0.11, 0.15, 0.4, 10);
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.45, metalness: 0.05 });
+        currentStem = new THREE.Mesh(stemGeo, stemMat);
+        currentStem.position.set(0, stemBaseY + 0.18, 0);
+        currentStem.castShadow = true;
+        scene.add(currentStem);
+        
+        // 主叶片: 锥体
+        const leafGeo = new THREE.ConeGeometry(0.19, 0.48, 12);
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x5a9e4e, roughness: 0.35, emissive: 0x1a4a1a });
+        currentLeaf = new THREE.Mesh(leafGeo, leafMat);
+        currentLeaf.position.set(0.13, stemBaseY + 0.39, 0.06);
+        currentLeaf.rotation.x = 0.65;
+        currentLeaf.rotation.z = -0.45;
+        currentLeaf.rotation.y = 0.3;
+        currentLeaf.castShadow = true;
+        scene.add(currentLeaf);
+        
+        // 小叶片
+        const leafSmallGeo = new THREE.ConeGeometry(0.13, 0.38, 10);
+        const leafSmallMat = new THREE.MeshStandardMaterial({ color: 0x6aae5e, roughness: 0.4 });
+        currentLeafSmall = new THREE.Mesh(leafSmallGeo, leafSmallMat);
+        currentLeafSmall.position.set(-0.09, stemBaseY + 0.41, 0.1);
+        currentLeafSmall.rotation.x = 0.45;
+        currentLeafSmall.rotation.z = 0.65;
+        currentLeafSmall.rotation.y = -0.2;
+        currentLeafSmall.castShadow = true;
+        scene.add(currentLeafSmall);
+    }
+    
+    // ---------- 2D Canvas 绘制轮廓及控制点 ----------
+    function drawProfile() {
+        if (!ctx) return;
+        ctx.clearRect(0, 0, width, height);
+        
+        // 背景
+        ctx.fillStyle = '#1e1e2a';
+        ctx.fillRect(0, 0, width, height);
+        
+        // 绘制坐标轴网格
+        ctx.save();
+        ctx.strokeStyle = '#445566';
+        ctx.lineWidth = 0.8;
+        // 画水平参考线 (y=0 赤道位置)
+        let y0 = worldToCanvas(0, 0).y;
+        ctx.beginPath();
+        ctx.moveTo(0, y0);
+        ctx.lineTo(width, y0);
+        ctx.stroke();
+        ctx.fillStyle = '#88aaff';
+        ctx.font = '10px monospace';
+        ctx.fillText('赤道', 5, y0-3);
+        
+        // 画垂直中心线 (半径0)
+        let x0 = worldToCanvas(0, 0).x;
+        ctx.beginPath();
+        ctx.moveTo(x0, 0);
+        ctx.lineTo(x0, height);
+        ctx.strokeStyle = '#556677';
+        ctx.stroke();
+        
+        // 绘制轮廓曲线 (平滑曲线)
+        const smoothPoints = generateSmoothProfile(120);
+        if (smoothPoints.length > 1) {
+            ctx.beginPath();
+            let first = worldToCanvas(smoothPoints[0].x, smoothPoints[0].y);
+            ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < smoothPoints.length; i++) {
+                let pt = worldToCanvas(smoothPoints[i].x, smoothPoints[i].y);
+                ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.strokeStyle = '#ffaa66';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            // 增加发光效果
+            ctx.beginPath();
+            for (let i = 0; i < smoothPoints.length; i++) {
+                let pt = worldToCanvas(smoothPoints[i].x, smoothPoints[i].y);
+                if(i===0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.strokeStyle = '#ffcc88';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        
+        // 绘制控制点 (圆形可拖拽)
+        for (let i = 0; i < controlPoints.length; i++) {
+            const p = controlPoints[i];
+            const { x: cx, y: cy } = worldToCanvas(p.x, p.y);
+            ctx.beginPath();
+            ctx.arc(cx, cy, 7, 0, 2 * Math.PI);
+            ctx.fillStyle = draggingIndex === i ? '#ff8866' : '#ffaa77';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 10px monospace';
+            ctx.fillText(i, cx-4, cy-4);
+        }
+        
+        // 标注文字说明
+        ctx.fillStyle = '#ccccdd';
+        ctx.font = '10px monospace';
+        ctx.fillText('半径 →', width-60, 20);
+        ctx.fillText('↑ 高度', 15, 30);
+        ctx.restore();
+        
+        // 更新状态栏
+        if (draggingIndex !== -1) {
+            const p = controlPoints[draggingIndex];
+            document.getElementById('coordStatus').innerHTML = `当前选中点 ${draggingIndex} : (半径 ${p.x.toFixed(3)}, 高度 ${p.y.toFixed(3)})`;
+        } else {
+            document.getElementById('coordStatus').innerHTML = `控制点数量: ${controlPoints.length} | 拖拽圆点调整轮廓`;
+        }
+    }
+    
+    // 处理鼠标拖拽逻辑
+    function handleMouseDown(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+        
+        // 查找点击的控制点
+        for (let i = 0; i < controlPoints.length; i++) {
+            const { x: wx, y: wy } = worldToCanvas(controlPoints[i].x, controlPoints[i].y);
+            const dx = mouseX - wx;
+            const dy = mouseY - wy;
+            if (Math.hypot(dx, dy) < 12) {
+                draggingIndex = i;
+                canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+                drawProfile();
+                break;
+            }
+        }
+    }
+    
+    function handleMouseMove(e) {
+        if (draggingIndex === -1) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let mouseX = (e.clientX - rect.left) * scaleX;
+        let mouseY = (e.clientY - rect.top) * scaleY;
+        mouseX = Math.min(Math.max(mouseX, 0), width);
+        mouseY = Math.min(Math.max(mouseY, 0), height);
+        const world = canvasToWorld(mouseX, mouseY);
+        // 限制半径合理, 高度不能越界且保持顺序
+        let newX = Math.min(world.x, 1.05);
+        let newY = world.y;
+        // 保持控制点的顺序: 不能超过前一个点和后一个点的y范围
+        if (draggingIndex > 0 && newY <= controlPoints[draggingIndex-1].y + 0.02) {
+            newY = controlPoints[draggingIndex-1].y + 0.02;
+        }
+        if (draggingIndex < controlPoints.length-1 && newY >= controlPoints[draggingIndex+1].y - 0.02) {
+            newY = controlPoints[draggingIndex+1].y - 0.02;
+        }
+        // 首尾半径接近0限制
+        if (draggingIndex === 0 || draggingIndex === controlPoints.length-1) {
+            newX = Math.min(newX, 0.04);
+        }
+        controlPoints[draggingIndex].x = Math.max(0.0, newX);
+        controlPoints[draggingIndex].y = newY;
+        
+        // 强制排序并确保单调递增
+        enforceIncreasingY(controlPoints);
+        drawProfile();
+        updateApple3D();  // 实时更新3D模型
+    }
+    
+    function handleMouseUp() {
+        draggingIndex = -1;
+        canvas.style.cursor = 'crosshair';
+        drawProfile();
+    }
+    
+    // 重置为经典苹果形状
+    function resetShape() {
+        controlPoints = [
+            { x: 0.00, y: -0.95 },
+            { x: 0.32, y: -0.80 },
+            { x: 0.72, y: -0.35 },
+            { x: 0.88, y: 0.00 },
+            { x: 0.85, y: 0.40 },
+            { x: 0.70, y: 0.70 },
+            { x: 0.42, y: 0.88 },
+            { x: 0.00, y: 1.05 }
+        ];
+        enforceIncreasingY(controlPoints);
+        drawProfile();
+        updateApple3D();
+    }
+    
+    // 切换网格可见性
+    let gridVisible = true;
+    function toggleGrid() {
+        gridVisible = !gridVisible;
+        gridHelper.visible = gridVisible;
+        axesHelper.visible = gridVisible;
+    }
+    
+    // 添加鼠标事件监听
+    function init2DInteraction() {
+        canvas.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('dragstart', (e) => e.preventDefault());
+        canvas.style.cursor = 'crosshair';
+    }
+    
+    // 动画: 星星旋转 & 轻微光效
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update(); // 更新轨道
+        // 动态微调灯光颜色
+        const time = Date.now() * 0.002;
+        fillLight.intensity = 0.45 + Math.sin(time * 0.6) * 0.05;
+        backLight.intensity = 0.58 + Math.cos(time * 0.5) * 0.06;
+        topLight.intensity = 0.4 + Math.sin(time * 0.8) * 0.04;
+        stars.rotation.y += 0.0005;
+        stars.rotation.x += 0.0003;
+        renderer.render(scene, camera);
+    }
+    
+    // 响应窗口大小变化
+    window.addEventListener('resize', onWindowResize);
+    function onWindowResize() {
+        const newWidth = container3d.clientWidth;
+        const newHeight = container3d.clientHeight;
+        camera.aspect = newWidth / newHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(newWidth, newHeight);
+        // 重新获取canvas尺寸适应CSS变化 (保持canvas绘图大小固定500px)
+        const rect = canvas.getBoundingClientRect();
+        // 不重新设置canvas尺寸，保持绘图清晰
+        drawProfile();
+    }
+    
+    // 初始化全部
+    function init() {
+        init2DInteraction();
+        enforceIncreasingY(controlPoints);
+        drawProfile();
+        updateApple3D();
+        animate();
+        
+        // 绑定按钮事件
+        document.getElementById('resetBtn').addEventListener('click', resetShape);
+        document.getElementById('toggleGridBtn').addEventListener('click', toggleGrid);
+        
+        // 辅助：首次调整相机角度
+        setTimeout(() => {
+            controls.target.set(0, 0.6, 0);
+            controls.update();
+        }, 100);
+    }
+    
+    init();
+</script>
+</body>
+</html>
